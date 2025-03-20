@@ -1,21 +1,23 @@
 <?xml version="1.0"?>
 <launch>
 
-  <arg name="pcd_file_name" default="$(find mlcpp)/resource/bigben2.pcd"/>
+  <!-- <arg name="pcd_file_name" default="$(find mlcpp)/resource/bun_zipper.ply"/> -->
+  <arg name="mesh_file_name" default="$(find mlcpp)/resource/bun_zipper.ply"/>
 
   <!-- Rviz  -->
   <node name="visualizer" pkg="rviz" type="rviz" output="screen" args="-d $(find mlcpp)/rviz.rviz"/>
 
-
   <!-- Basic params  -->
   <param name="/debug_mode" value="false"/>
-  <param name="/infile" value="$(arg pcd_file_name)"/>
+  <!-- <param name="/infile" value="$(arg pcd_file_name)"/> -->
+  <param name="/meshfile" value="$(arg mesh_file_name)"/>
   <rosparam param="/cam_intrinsic">[640, 480, 319.998, 319.998, 320.5, 240.5]</rosparam> <!-- width, height, f_x, f_y, c_x, c_y -->
 
   <!-- MLCPP params -->
-  <param name="/slice_height" value="7.0"/> <!-- slicing target PCL every this meters -->
+  <param name="/slice_height" value="2"/> <!-- slicing target PCL every this meters  DEFALULT = 7 -->
   <param name="/max_dist" value="18.0"/> <!-- between viewpoint and target pcl point -->
   <param name="/max_angle" value="45.0"/> <!-- between viewpoint and target pcl point's normal -->
+  <!-- 视点沿法向量偏移8个单位 -->
   <param name="/view_pt_dist" value="8.0"/> <!-- from points -->
   <param name="/view_pt_each_dist" value="2.0"/> <!-- between each viewpoints -->
   <param name="/view_overlap" value="0.4"/> <!-- (1-this value): max overlap between two viewpoints -->

@@ -95,6 +95,7 @@ geometry_msgs::PoseArray pclnormal_to_posearray(const pcl::PointCloud<pcl::Point
   }
   return normal_pose_array;
 }
+// PCL点云中的法线信息转换为ROS中的PoseStamped消息
 geometry_msgs::PoseStamped single_pclnormal_to_posestamped(const pcl::PointNormal &pcl_normals)
 {
   geometry_msgs::PoseStamped pcl_normal_to_posestamped;

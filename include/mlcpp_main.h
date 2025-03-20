@@ -1,27 +1,20 @@
 #ifndef MLCPP_MAIN_H
 #define MLCPP_MAIN_H
-
-
 #include "utilities.h"
-
-///// C++
+/// C++
 #include <algorithm>
 #include <signal.h>
 #include <string>
 #include <sstream>
 #include <math.h>
 #include <chrono>
-
-
-///// Eigen, Linear Algebra
+/// Eigen, Linear Algebra
 #include <Eigen/Eigen> //whole Eigen library
-
-///// OpenCV
+/// OpenCV
 #include <opencv/cv.h>
 #include <opencv2/opencv.hpp>
 #include <cv_bridge/cv_bridge.h>
-
-///// ROS
+/// ROS
 #include <ros/ros.h>
 #include <std_msgs/Empty.h>
 #include <sensor_msgs/PointCloud2.h>
@@ -33,8 +26,7 @@
 #include <nav_msgs/Path.h>
 #include <image_transport/image_transport.h>
 #include <image_geometry/pinhole_camera_model.h>
-
-///// PCL
+// PCL
 //defaults
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
@@ -42,6 +34,17 @@
 #include <pcl/common/common.h>
 #include <pcl/common/transforms.h>
 #include <pcl/io/pcd_io.h>
+#include <pcl/kdtree/kdtree_flann.h>
+//mesh
+#include <pcl/io/ply_io.h>
+#include <pcl/io/obj_io.h>
+#include <pcl/io/vtk_io.h>
+#include <pcl/surface/mls.h>
+#include <pcl/surface/poisson.h>
+#include <pcl/surface/gp3.h>
+#include <pcl/PolygonMesh.h>
+#include <pcl/filters/uniform_sampling.h>  
+#include <pcl/visualization/pcl_visualizer.h>
 //conversions
 #include <pcl/conversions.h>
 #include <pcl_conversions/pcl_conversions.h>
@@ -55,18 +58,16 @@
 
 using namespace std;
 
-
-
-//// main class
+// main class
 class mlcpp_class{
   public:
-    ///// basic params
+    /// basic params
     bool m_cam_init=false, m_pcd_load=false, m_pre_process=false;
     bool m_debug_mode=false;
-    string m_infile;
+    // string m_infile;
+    string m_meshfile;
     vector<double> m_cam_intrinsic;
-
-    ///// MLCPP params
+    /// MLCPP params
     double m_max_dist = 15.0;
     double m_max_angle = 60.0;
     double m_view_pt_dist = 10.0; //from points
@@ -74,32 +75,43 @@ class mlcpp_class{
     double m_view_overlap = 0.1; //overlap bet two viewpoints
     double m_slice_height = 8.0;
     int m_TSP_trial = 100;
-    ///// MLCPP variables
+    /// MLCPP variables
     image_geometry::PinholeCameraModel m_camera_model;
     pcl::NormalEstimationOMP<pcl::PointXYZ, pcl::Normal> m_normal_estimator;
     pcl::PointXYZ m_pcd_center_point;
     pcl::PointCloud<pcl::PointXYZ> m_cloud_map, m_cloud_center, m_cloud_none_viewed;
     pcl::PointCloud<pcl::PointXYZ> m_cloud_initial_view_point, m_optimized_view_point;
     pcl::PointCloud<pcl::PointNormal> m_cloud_normals;
+    pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;      
+
+    pcl::PolygonMesh m_mesh;
+
     geometry_msgs::PoseArray m_normal_pose_array;
     nav_msgs::Path m_all_layer_path;
-
-    ///// ROS
+    /// ROS
     ros::NodeHandle m_nh;
     ros::Subscriber m_path_calc_sub;
     ros::Publisher m_cloud_map_pub, m_cloud_center_pub, m_cloud_none_viewed_pub;
     ros::Publisher m_initial_view_point_pub, m_optimized_view_point_pub;
     ros::Publisher m_cloud_normal_pub, m_all_layer_path_pub;
     ros::Timer m_visualizing_timer;
+    // mesh
+    ros::Publisher m_pubCloud;
 
-    ///// Functions    
+
+    /// Functions    
     //ROS
     void calc_cb(const std_msgs::Empty::ConstPtr& msg);
     void visualizer_timer_func(const ros::TimerEvent& event);
     //init
     void cam_init();
-    void load_pcd();
+    // void load_pcd();
     void preprocess_pcd();
+    void load_mesh();
+    void preprocess_ply();
+    void pointCloudandMeshViewer(const pcl::PolygonMesh& mesh);
+
+
     //others
     bool check_cam_in(Eigen::VectorXd view_point_xyzpy,pcl::PointXYZ point,pcl::Normal normal);
     void flip_normal(pcl::PointXYZ base,pcl::PointXYZ center,float & nx,float & ny, float & nz);
@@ -108,25 +120,23 @@ class mlcpp_class{
     double PclArrayCost(pcl::PointCloud<pcl::PointNormal>::Ptr pclarray, double &distance);
     double TwoOptTSP(pcl::PointCloud<pcl::PointNormal>::Ptr pclarray);
     void OrdreringTSP(pcl::PointCloud<pcl::PointNormal>::Ptr pclarray);
-
+    //检查可视点到目标点的连线是否被 mesh 面片阻挡
+    bool isIntersecting(const pcl::PointXYZ& A, const pcl::PointXYZ& B, const pcl::PointXYZ& v0, const pcl::PointXYZ& v1, const pcl::PointXYZ& v2);
+    bool check_viewpoint_collision(Eigen::VectorXd view_point_xyzpy, pcl::PointXYZ point, pcl::Normal normal);
+    void buildKDTree(); 
+    
     //constructor
     mlcpp_class(const ros::NodeHandle& n);
     ~mlcpp_class(){};
 };
 
 
-
-
-
-
-
-
-
-////////////////// can be separated into .cpp file
-///// class constructor
+//  can be separated into .cpp file
+/// class constructor
 mlcpp_class::mlcpp_class(const ros::NodeHandle& n) : m_nh(n){
   // params
-  m_nh.param<string>("/infile", m_infile, "resource/1875935000.pcd");
+  m_nh.param<string>("/meshfile", m_meshfile, "resource/bun_zipper.ply");
+  // m_nh.param<string>("/infile", m_infile, "resource/bigben2.pcd");
   m_nh.param<bool>("/debug_mode", m_debug_mode, false);
   m_nh.getParam("/cam_intrinsic", m_cam_intrinsic);
   m_nh.param("/slice_height", m_slice_height, 8.0);
@@ -140,7 +150,7 @@ mlcpp_class::mlcpp_class(const ros::NodeHandle& n) : m_nh(n){
   //sub
   m_path_calc_sub = m_nh.subscribe<std_msgs::Empty>("/calculate_cpp", 3, &mlcpp_class::calc_cb, this);
 
-  //pub
+  ///pub
   m_cloud_map_pub = m_nh.advertise<sensor_msgs::PointCloud2>("/pcl_map", 3);
   m_cloud_center_pub = m_nh.advertise<sensor_msgs::PointCloud2>("/pcl_center", 3);
   m_cloud_none_viewed_pub = m_nh.advertise<sensor_msgs::PointCloud2>("/none_viewed_pcl", 3);
@@ -148,17 +158,45 @@ mlcpp_class::mlcpp_class(const ros::NodeHandle& n) : m_nh(n){
   m_optimized_view_point_pub = m_nh.advertise<sensor_msgs::PointCloud2>("/optimized_viewpoints", 3);
   m_cloud_normal_pub = m_nh.advertise<geometry_msgs::PoseArray>("/pcl_normals", 3);
   m_all_layer_path_pub = m_nh.advertise<nav_msgs::Path>("/mlcpp_path", 3);
+  // mesh
+  m_pubCloud = m_nh.advertise<sensor_msgs::PointCloud2>("/mesh_cloud", 3);
 
-  //timer
+  ///timer
   m_visualizing_timer = m_nh.createTimer(ros::Duration(1/5.0), &mlcpp_class::visualizer_timer_func, this);
 
-  //init
+  ///init
   cam_init(); //Set camera parameter
-  load_pcd(); //Get Map from pcd
-  preprocess_pcd(); //Preprocess pcd: ground removal, normal estimation
+  // load_pcd(); //Get Map from pcd
+  // preprocess_pcd(); //Preprocess pcd: ground removal, normal estimation
+
+  load_mesh(); //Get mesh from ply
+
+  // mesh_to_pointcloud();
+
+  preprocess_ply(); //Preprocess ply: normal estimation
 }
 
+bool mlcpp_class::isIntersecting(const pcl::PointXYZ& A, const pcl::PointXYZ& B, const pcl::PointXYZ& v0, const pcl::PointXYZ& v1, const pcl::PointXYZ& v2) {
+    Eigen::Vector3d dir(B.x - A.x, B.y - A.y, B.z - A.z);
+    Eigen::Vector3d edge1(v1.x - v0.x, v1.y - v0.y, v1.z - v0.z);
+    Eigen::Vector3d edge2(v2.x - v0.x, v2.y - v0.y, v2.z - v0.z);
+    Eigen::Vector3d pvec = dir.cross(edge2);
+    double det = edge1.dot(pvec);
 
+    if (fabs(det) < 1e-8) return false; // 线平行于三角形
+    double invDet = 1.0 / det;
+
+    Eigen::Vector3d tvec(A.x - v0.x, A.y - v0.y, A.z - v0.z);
+    double u = tvec.dot(pvec) * invDet;
+    if (u < 0 || u > 1) return false;
+
+    Eigen::Vector3d qvec = tvec.cross(edge1);
+    double v = dir.dot(qvec) * invDet;
+    if (v < 0 || u + v > 1) return false;
+
+    double t = edge2.dot(qvec) * invDet;
+        return (t > 1e-8 && t < 1.0 + 1e-8); // t 表示交点在线段 AB 之间
+}
 
 ///// functions
 void mlcpp_class::cam_init(){
@@ -185,29 +223,122 @@ void mlcpp_class::cam_init(){
   ROS_WARN("Camera info processed in %.3f [ms]", duration);
   m_cam_init = true;
 }
+// void mlcpp_class::load_mesh1()
+// {
+//   std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
+//   //load ply
+//   ROS_INFO("loading %s", m_meshfile.c_str());
 
-void mlcpp_class::load_pcd(){
-  std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
-  m_cloud_map.clear();
-  m_cloud_center.clear();
-  m_cloud_none_viewed.clear();
-  m_cloud_initial_view_point.clear();
-  m_optimized_view_point.clear();
+//   pcl::PolygonMesh mesh;
+//   if (pcl::io::loadPLYFile(m_meshfile, mesh) == -1){
+//     PCL_ERROR("Couldn't read file ply\n");
+//     return;
+//   }
 
-  ROS_INFO("loading %s", m_infile.c_str());
-  if (pcl::io::loadPCDFile<pcl::PointXYZ> (m_infile.c_str (), m_cloud_map) == -1) //* load the file
-  {
-    PCL_ERROR ("Couldn't read pcd file \n");
-    return;
-  }
+//   // 传到全局变量
+//   m_mesh = std::move(mesh);
+//   // 检查网格是否正确加载
+//   if (m_mesh.polygons.empty() || m_mesh.cloud.data.empty()) {
+//       PCL_ERROR("PLY file is empty or not a valid mesh!\n");
+//       return;
+//   }
+//   auto t2 = std::chrono::high_resolution_clock::now();
+//   double duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
+//   ROS_INFO("PLY Mesh loaded in %.2f ms, faces: %zu", duration, m_mesh.polygons.size());
+//   // ROS中显示网格
+//   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
+//   pcl::fromPCLPointCloud2(m_mesh.cloud, *cloud);
+//   m_cloud_map = *cloud;  // 将点云数据存储到 m_cloud_map
+//   sensor_msgs::PointCloud2 cloud_msg;
+//   pcl::toROSMsg(*cloud, cloud_msg);  
+//   cloud_msg.header.frame_id = "map";  
+//   cloud_msg.header.stamp = ros::Time::now(); 
+// }
 
-  std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
-  double duration = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() / 1e3;
+// 可视化点云和mesh模型
+void mlcpp_class::pointCloudandMeshViewer(const pcl::PolygonMesh& mesh)
+{
+	// 输出结果到可视化窗口
+	boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer(new pcl::visualization::PCLVisualizer("3D PointCloud Viewer"));
 
-  ROS_WARN("Map successfully obtained from PCD in %.3f [ms]", duration);
-
-  m_pcd_load = true;
+	// 显示重建点云
+	int v1;
+	viewer->createViewPort(0.0, 0.0, 1.0, 1.0, v1);  // 右侧窗口
+	viewer->setBackgroundColor(0.0, 0.0, 0.0, v1);   // 黑色背景
+	viewer->addText("mesh", 10, 10, "mesh_text", v1);
+	viewer->addPolygonMesh(mesh, "mesh", v1);
+	viewer->setRepresentationToWireframeForAllActors(); // 网格模型以线框图模式显示
+	// 可视化循环
+	while (!viewer->wasStopped())
+	{
+		viewer->spinOnce(100);
+	}
 }
+
+void mlcpp_class::load_mesh()
+{
+  std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
+  // 将ply格式数据加载为PolygonMesh对象
+  pcl::PolygonMesh poly_mesh;
+  // 成功返回0，失败返回-1
+  ROS_INFO("loading %s", m_meshfile.c_str());
+  if(-1 == pcl::io::loadPLYFile(m_meshfile, poly_mesh)){
+      std::cout<<"load ply file failed. please check it."<<std::endl;
+      return ;
+  }
+  if(!poly_mesh.cloud.data.empty()){
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::fromPCLPointCloud2(poly_mesh.cloud, *cloud);
+
+    // 对网格进行降采样生成点云
+    // pcl::PointCloud<pcl::PointXYZ>::Ptr sampled_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+    // pcl::UniformSampling<pcl::PointXYZ> sampling;
+    // sampling.setInputCloud(cloud);
+    // sampling.setRadiusSearch(0.01);  // 设置采样半径
+    // sampling.filter(*sampled_cloud);
+    // 保存点云
+    // pcl::io::savePLYFile("output_cloud.ply", *sampled_cloud); 
+
+    // 直接使用原始点云进行可视化
+    pcl::visualization::PCLVisualizer viewer("Mesh to Point Cloud");
+    viewer.addPointCloud(cloud, "original_cloud");
+    viewer.spin();
+
+    m_cloud_map = *cloud;
+    std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
+    double duration = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() / 1e3;
+    ROS_WARN("Map successfully obtained from PCD in %.3f [ms]", duration);
+    m_pcd_load = true;
+    // 直接mesh可视化
+    // this->pointCloudandMeshViewer(poly_mesh);
+  } 
+}
+
+
+// void mlcpp_class::load_pcd(){
+//   std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
+//   m_cloud_map.clear();
+//   m_cloud_center.clear();
+//   m_cloud_none_viewed.clear();
+//   m_cloud_initial_view_point.clear();
+//   m_optimized_view_point.clear();
+
+//   ROS_INFO("loading %s", m_infile.c_str());
+//   if (pcl::io::loadPCDFile<pcl::PointXYZ> (m_infile.c_str (), m_cloud_map) == -1) //* load the file
+//   {
+//     PCL_ERROR ("Couldn't read pcd file \n");
+//     return;
+//   }
+
+//   std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
+//   double duration = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() / 1e3;
+
+//   ROS_WARN("Map successfully obtained from PCD in %.3f [ms]", duration);
+
+//   m_pcd_load = true;
+//   //try
+//   buildKDTree();
+// }
 
 void mlcpp_class::preprocess_pcd(){
   std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
@@ -240,9 +371,6 @@ void mlcpp_class::preprocess_pcd(){
   m_cloud_map.width = m_cloud_map.points.size();
   m_cloud_map.height = 1;
   ROS_INFO("Ground filtering Finished!");
-
-
-
   ////// Normal estimation
   ROS_INFO("Normal Estimation Start!");
   m_cloud_normals.clear();
@@ -283,6 +411,24 @@ void mlcpp_class::preprocess_pcd(){
   m_pre_process=true;	
 }
 
+// 主要是针对点云做滤波和法线估计，
+// 而 Mesh 本身已经包含了表面信息，我们只需要调整代码适应 Mesh：
+void mlcpp_class::preprocess_ply()
+{
+  std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
+  
+  // 计算mesh网格的法线
+  // 先遍历提取mesh中的顶点，计算顶点的法线，在这一步判断是否是朝向外的法线，剔除或者反向，
+  // 再对顶点法线进行加权平均归一化，得到面片的法线，这样确保面片法线朝向外部。 
+  //TODO
+
+
+  // 计算处理时间
+  std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
+  double duration = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() / 1e3;
+  ROS_WARN("Mesh preprocessing completed in %.3f [ms]", duration);
+  m_pre_process=true;	
+}
 
 void mlcpp_class::calc_cb(const std_msgs::Empty::ConstPtr& msg){
   std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
@@ -301,21 +447,27 @@ void mlcpp_class::calc_cb(const std_msgs::Empty::ConstPtr& msg){
     int current_layer=1;
     pcl::PointNormal minpt;
     pcl::PointNormal maxpt;
+    // 获取点云的最小、最大 3D 边界值
     pcl::getMinMax3D(m_cloud_normals, minpt, maxpt);
     float minpt_z = minpt.z;
     ///PCL Slice with Z axis value (INITIAL)
     pcl::PointCloud<pcl::PointNormal>::Ptr Sliced_ptnorm(new pcl::PointCloud<pcl::PointNormal>);
     pcl::PointCloud<pcl::PointNormal>::Ptr cloud_pt_normals(new pcl::PointCloud<pcl::PointNormal>);
+    // 拷贝原始点云数据
     *cloud_pt_normals = m_cloud_normals;
     pcl::PassThrough<pcl::PointNormal> pass;
     pass.setInputCloud (cloud_pt_normals);
+    // 沿z轴过滤
     pass.setFilterFieldName ("z");
     pass.setFilterLimits (minpt_z,minpt_z+m_slice_height);
+    // 过滤后的点存入Sliced_ptnorm
     pass.filter (*Sliced_ptnorm);
 
 
     while(!finish)
     {
+      // 遍历切片层级
+      //!BUG 不能用基于高度切片的方式 对矮小的物体直接失效
       if (minpt_z+m_slice_height >= maxpt.z){ // Check if last layer
         finish = true;
       }
@@ -325,22 +477,26 @@ void mlcpp_class::calc_cb(const std_msgs::Empty::ConstPtr& msg){
       for(int i=0;i<Sliced_ptnorm->points.size();i++)
       {
         pcl::PointNormal temp_ptnorm;
+        // 视点由原点云沿法线方向偏移 m_view_pt_dist 个单位生成
         temp_ptnorm.x = Sliced_ptnorm->points[i].x + Sliced_ptnorm->points[i].normal[0] * m_view_pt_dist;
         temp_ptnorm.y = Sliced_ptnorm->points[i].y + Sliced_ptnorm->points[i].normal[1] * m_view_pt_dist;
         temp_ptnorm.z = Sliced_ptnorm->points[i].z + Sliced_ptnorm->points[i].normal[2] * m_view_pt_dist;
         if(temp_ptnorm.z <= 0 ) continue;
+        // 反转法线,方向朝原点云的方向
         temp_ptnorm.normal[0] = -Sliced_ptnorm->points[i].normal[0];
         temp_ptnorm.normal[1] = -Sliced_ptnorm->points[i].normal[1];
         temp_ptnorm.normal[2] = -Sliced_ptnorm->points[i].normal[2];
         viewpoint_ptnorm->push_back(temp_ptnorm);
       }
       ///PCL downsample viewpoints with VoxelGrid
+      // pcl体素滤波,减少点云密度,降低计算开销
       pcl::VoxelGrid<pcl::PointNormal> voxgrid;
       pcl::PointCloud<pcl::PointNormal>::Ptr Voxed_Sliced_Viewpt (new pcl::PointCloud<pcl::PointNormal>);
       Voxed_Sliced_Viewpt->clear();
       pcl::PointCloud<pcl::PointNormal>::Ptr Voxed_Sliced_Admitted_Viewpt (new pcl::PointCloud<pcl::PointNormal>);
       Voxed_Sliced_Admitted_Viewpt->clear();
       voxgrid.setInputCloud(viewpoint_ptnorm);
+      // 点云变成体素 2*2*2*0.8
       voxgrid.setLeafSize(m_view_pt_each_dist,m_view_pt_each_dist,m_view_pt_each_dist*0.8);
       voxgrid.filter(*Voxed_Sliced_Viewpt);
 
@@ -351,29 +507,44 @@ void mlcpp_class::calc_cb(const std_msgs::Empty::ConstPtr& msg){
         initial_view_pts.x = Voxed_Sliced_Viewpt->points[idx].x;
         initial_view_pts.y = Voxed_Sliced_Viewpt->points[idx].y;
         initial_view_pts.z = Voxed_Sliced_Viewpt->points[idx].z;
+        // 处理好的点
         m_cloud_initial_view_point.push_back(initial_view_pts);
       }
-
+      //TODO 去掉随机性,按顺序暴力遍历
+      // 随机筛选视角点
       pcl::PointCloud<pcl::PointNormal>::Ptr Sliced_ptnorm_Unview (new pcl::PointCloud<pcl::PointNormal>);
       Sliced_ptnorm_Unview->clear();
       pcl::copyPointCloud(*Sliced_ptnorm,*Sliced_ptnorm_Unview);
       ///PCL downsample viewpoints by view calculation
       int admitted=0;
+      //?对 Voxed_Sliced_Viewpt 点云的索引进行随机打乱
       int a[Voxed_Sliced_Viewpt->points.size()];
       for(int i=0;i<Voxed_Sliced_Viewpt->points.size();i++){
         a[i]=i;
       }
-      random_shuffle(&a[0], &a[Voxed_Sliced_Viewpt->points.size()]);
+      //！TODO 去掉随机性会发生什么
+      // 通过 random_shuffle 打乱索引，随机挑选点来优化分布
+      // random_shuffle(&a[0], &a[Voxed_Sliced_Viewpt->points.size()]);
       for(int k=0;k<Voxed_Sliced_Viewpt->points.size();k++)
       {
         int i = a[k];
         vector<int> toerase;
         vector<int> view_comp_map;
         Eigen::VectorXd viewpt(5);
+        // 这里 viewpt 是一个 5 维向量，它的含义：
+        // 索引	含义
+        // 0	x 坐标
+        // 1	y 坐标
+        // 2	z 坐标
+        // 3	俯仰角（Pitch）
+        // 4	横滚角（Roll）
+        //? 为什么不加偏航角?
         viewpt << Voxed_Sliced_Viewpt->points[i].x,Voxed_Sliced_Viewpt->points[i].y,Voxed_Sliced_Viewpt->points[i].z,
                 asin(-Voxed_Sliced_Viewpt->points[i].normal[2])/M_PI*180.0,
                 asin(Voxed_Sliced_Viewpt->points[i].normal[1]/cos(-Voxed_Sliced_Viewpt->points[i].normal[2]))/M_PI*180.0;
+        // openmp多线程并行加速
         #pragma omp parallel for
+        // 检查哪些点可以被当前视角点覆盖，并记录需要删除的索引（toerase）
         for(int j=0;j<Sliced_ptnorm_Unview->points.size();j++)
         {
           pcl::PointXYZ point_toview(Sliced_ptnorm_Unview->points[j].x,Sliced_ptnorm_Unview->points[j].y,
@@ -388,9 +559,11 @@ void mlcpp_class::calc_cb(const std_msgs::Empty::ConstPtr& msg){
           }
         }
         #pragma omp parallel for
+        // 遍历 Sliced_ptnorm 原始点云，记录哪些点属于当前视角的可视区域（view_comp_map）
         for (size_t j=0;j<Sliced_ptnorm->points.size();j++)
         {
-          pcl::PointXYZ point_toview(Sliced_ptnorm->points[j].x,Sliced_ptnorm->points[j].y,
+          pcl::PointXYZ point_toview(Sliced_ptnorm->points[j].x,
+                                     Sliced_ptnorm->points[j].y,
                                      Sliced_ptnorm->points[j].z);
           pcl::Normal point_normal(Sliced_ptnorm->points[j].normal[0],
                                    Sliced_ptnorm->points[j].normal[1],
@@ -401,7 +574,10 @@ void mlcpp_class::calc_cb(const std_msgs::Empty::ConstPtr& msg){
             view_comp_map.push_back(j);
           }
         }
-        if(view_comp_map.size()*m_view_overlap < toerase.size())
+        // 如果 view_comp_map 的大小乘以 m_view_overlap 仍然小于 toerase 的大小，
+        // 则认为该可视点有效，将 toerase 中的点从 Sliced_ptnorm_Unview 删除，
+        // 并将该可视点添加到 Voxed_Sliced_Admitted_Viewpt
+        if(view_comp_map.size()*m_view_overlap < toerase.size()) // view_comp_map * 0.1 < toerase
         {
           sort(toerase.begin(),toerase.end());
           for(int j=toerase.size()-1;j>-1;j--)
@@ -517,6 +693,8 @@ void mlcpp_class::visualizer_timer_func(const ros::TimerEvent& event){
     m_cloud_none_viewed_pub.publish(cloud2msg(m_cloud_none_viewed));
     m_optimized_view_point_pub.publish(cloud2msg(m_optimized_view_point));
     m_all_layer_path_pub.publish(m_all_layer_path);
+    // m_pubCloud.publish(m_mesh_to_pointcloud);
+
 	}
 
   if(m_debug_mode){
@@ -533,7 +711,8 @@ void mlcpp_class::visualizer_timer_func(const ros::TimerEvent& event){
 
 ///////// methods
 //TODO: flip_normal not from center but from real view point, where recorded PCL for none-convex targets
-void mlcpp_class::flip_normal(pcl::PointXYZ base, pcl::PointXYZ center, float & nx, float & ny, float & nz)
+void mlcpp_class::flip_normal(pcl::PointXYZ base, pcl::PointXYZ center, 
+                              float & nx, float & ny, float & nz)
 {
   float xdif = base.x - center.x;
   float ydif = base.y - center.y;
@@ -545,6 +724,56 @@ void mlcpp_class::flip_normal(pcl::PointXYZ base, pcl::PointXYZ center, float & 
   }
 }
 
+void mlcpp_class::buildKDTree() 
+{
+    if (m_cloud_map.empty()) {
+        ROS_WARN("Mesh 为空，无法构建 KD-Tree");
+        return;
+    }
+
+    kdtree.setInputCloud(m_cloud_map.makeShared());
+    ROS_INFO("KD-Tree 构建完成，点数: %lu", m_cloud_map.size());
+}
+
+// 可视点碰撞检测
+// 检查视点是否与点云的某个点相交
+bool mlcpp_class::check_viewpoint_collision(Eigen::VectorXd view_point_xyzpy, pcl::PointXYZ point, pcl::Normal normal)
+{
+  //TODO: check collision with other viewpoints
+  //TODO: check collision with obstacles
+  pcl::PointXYZ view_point(view_point_xyzpy(0), view_point_xyzpy(1), view_point_xyzpy(2));
+  // **使用 KD-Tree 限制搜索范围**
+  std::vector<int> indices;
+  std::vector<float> distances;
+  //TODO parameterlize
+  float search_radius = 5.0;  // 设定搜索半径，单位：米，可调
+  kdtree.radiusSearch(view_point, search_radius, indices, distances, 1000);
+  // 遍历 KD-Tree 找到的最近邻点
+  for (size_t i = 0; i < indices.size(); i += 3) {
+      if (i + 2 >= indices.size()) break;
+      const auto& v0 = m_cloud_map.points[indices[i]];
+      const auto& v1 = m_cloud_map.points[indices[i+1]];
+      const auto& v2 = m_cloud_map.points[indices[i+2]];
+      
+      // 检查三角形是否退化
+      Eigen::Vector3d e1(v1.x - v0.x, v1.y - v0.y, v1.z - v0.z);
+      Eigen::Vector3d e2(v2.x - v0.x, v2.y - v0.y, v2.z - v0.z);
+      if (e1.cross(e2).norm() < 1e-6) continue; // 跳过退化的三角形
+      
+      if (isIntersecting(view_point, point, v0, v1, v2)) {
+          return true;  // true表示存在碰撞
+      }
+  }
+  // 反转最终返回值逻辑
+  return !check_cam_in(view_point_xyzpy, point, normal); // 原直接返回check_cam_in结果
+}
+
+// 这是一个用于验证视点有效性的核心函数，主要包含三个约束条件的检查：投影约束、距离约束和角度约束。
+// 投影约束：检查点是否在相机的视野范围内。
+// 距离约束：检查点与视点的距离是否在给定的最大距离范围内。
+// 角度约束：检查点的法线与视点的夹角是否在给定的最大角度范围内。
+// 函数返回一个布尔值，表示点是否满足所有约束条件。
+//TODO: try to add constrain about two viewpoints cant across every mesh voxel
 bool mlcpp_class::check_cam_in(Eigen::VectorXd view_point_xyzpy,pcl::PointXYZ point,pcl::Normal normal)
 {
   Eigen::Vector3d pt_bef_rot(point.x-view_point_xyzpy(0),point.y-view_point_xyzpy(1),point.z-view_point_xyzpy(2));
@@ -559,10 +788,13 @@ bool mlcpp_class::check_cam_in(Eigen::VectorXd view_point_xyzpy,pcl::PointXYZ po
   uv = m_camera_model.project3dToPixel(pt_cv);
   uv.x = floor(abs(uv.x)) * ((uv.x > 0) - (uv.x < 0));
   uv.y = floor(abs(uv.y)) * ((uv.y > 0) - (uv.y < 0));
+  // 约束1：投影约束（检查是否在成像范围内）
   if(uv.x<0 || uv.x>m_cam_intrinsic[0] || uv.y<0 || uv.y>m_cam_intrinsic[1]) return false;
+  // 约束2：距离约束（检查最大有效观测距离）
   float dist = sqrt(pow((view_point_xyzpy(0)-point.x),2)+pow((view_point_xyzpy(1)-point.y),2)+
                     pow((view_point_xyzpy(2)-point.z),2));
   if(dist>m_max_dist) return false;
+  // 约束3：角度约束（检查法线方向与观测方向的夹角）
   Eigen::Vector3d normal_pt(normal.normal_x,normal.normal_y,normal.normal_z);
   Eigen::Vector3d Normal_view_pt((view_point_xyzpy(0)-point.x)/dist,(view_point_xyzpy(1)-point.y)/dist,
                                     (view_point_xyzpy(2)-point.z)/dist);
@@ -610,8 +842,9 @@ double mlcpp_class::PclArrayCost(pcl::PointCloud<pcl::PointNormal>::Ptr pclarray
     Eigen::Vector3d next(pclarray->points[i].x, pclarray->points[i].y, pclarray->points[i].z);
     Eigen::Vector3d direction_vector = next - current;
     double dist = direction_vector.norm();
-
+    // 总距离
     distance_out += dist;
+    // 点的法向量变化越大，惩罚越大，避免路径突然偏离
     cost = cost + dist + dist*fabs(direction_vector.normalized().dot(current_normal.normalized())); // penalty on penetrating through pcd target
   }
   distance = distance_out;
@@ -629,7 +862,7 @@ double mlcpp_class::TwoOptTSP(pcl::PointCloud<pcl::PointNormal>::Ptr pclarray)
   if (m_debug_mode){
     ROS_INFO("Initial distance: %.2f", best_cost);
   }
-  while (improve<m_TSP_trial)
+  while (improve<m_TSP_trial) // 100次迭代
   {
     for ( int i = 1; i <size - 2; i++ )
     {
@@ -662,6 +895,7 @@ void mlcpp_class::OrdreringTSP(pcl::PointCloud<pcl::PointNormal>::Ptr pclarray)
   pcl::PointCloud<pcl::PointNormal> temp_Array;
   pcl::PointNormal minpt;
   pcl::PointNormal maxpt;
+  // 1. 获取点云的Z轴极小极大值
   pcl::getMinMax3D(*pclarray,minpt,maxpt);
   // cout<<minpt.z<<"<-min,max->"<<maxpt.z<<endl;
   for(int i=0;i<pclarray->points.size();i++)
@@ -679,6 +913,7 @@ void mlcpp_class::OrdreringTSP(pcl::PointCloud<pcl::PointNormal>::Ptr pclarray)
           {
             if(k!=i && k!=j) temp_Array.push_back(pclarray->points[k]);
           }
+          // 6. 将Z轴最大值点作为路径终点
           temp_Array.push_back(pclarray->points[j]);
           break;
         }
@@ -686,6 +921,7 @@ void mlcpp_class::OrdreringTSP(pcl::PointCloud<pcl::PointNormal>::Ptr pclarray)
       break;
     }
   }
+  // 7. 用新排序替换原始点云
   pcl::copyPointCloud(temp_Array,*pclarray);
 }
 

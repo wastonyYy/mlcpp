@@ -5,9 +5,6 @@ void signal_handler(sig_atomic_t s) {
   exit(1);
 }
 
-
-
-
 int main(int argc, char **argv){
 
     signal(SIGINT, signal_handler); // to exit program when ctrl+c
